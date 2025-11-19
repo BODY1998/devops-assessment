@@ -1,0 +1,10 @@
+image:
+  repository: us-central1-docker.pkg.dev/devops-candidate-2/app-artifact-repo/devops-sample-app
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources: {}
