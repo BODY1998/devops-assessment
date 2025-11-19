@@ -52,7 +52,7 @@ jobs:
       # 4 Build and push Docker image to Artifact Registry
       - name: Build and push Docker image
         env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }} 
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           REPO="us-central1-docker.pkg.dev/${PROJECT_ID}/app-artifact-repo"
           IMAGE="${REPO}/devops-sample-app"
@@ -102,3 +102,55 @@ jobs:
         run: |
           kubectl version --client
           kubectl get nodes --no-headers -o wide || true
+  helm-deploy:
+    name: Helm upgrade --install
+    runs-on: ubuntu-latest
+    needs: get-kube-credentials
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq (for parsing helm history)
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.12.0
+
+      - name: Ensure namespace exists
+        env:
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+        run: |
+          kubectl get namespace "$NAMESPACE" || kubectl create namespace "$NAMESPACE"
+
+      - name: Capture previous Helm revision
+        id: prev
+        env:
+          RELEASE: ${{ env.HELM_RELEASE_NAME }}
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+        run: |
+          # If release does not exist, PREV_REV will be empty
+          if helm status "$RELEASE" -n "$NAMESPACE" > /dev/null 2>&1; then
+            # get the last revision number (highest)
+            PREV=$(helm history "$RELEASE" -n "$NAMESPACE" --output json | jq -r '.[-1].revision')
+            echo "prev_rev=$PREV" >> $GITHUB_OUTPUT
+          else
+            echo "prev_rev=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Helm upgrade --install (wait)
+        env:
+          RELEASE: ${{ env.HELM_RELEASE_NAME }}
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+          CHART: ${{ env.HELM_CHART_PATH }}
+          IMAGE_REPO: ${{ env.IMAGE_REPO }}
+          IMAGE: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          helm upgrade --install "$RELEASE" "$CHART" \
+            --namespace "$NAMESPACE" \
+            --set image.repository="${IMAGE_REPO}/${IMAGE}" \
+            --set image.tag="${IMAGE_TAG}" \
+            --wait --timeout 5m
