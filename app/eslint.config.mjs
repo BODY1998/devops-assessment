@@ -1,21 +1,23 @@
-// app/eslint.config.mjs
+// eslint.config.mjs
+import js from "@eslint/js";
+
 export default [
+  js.configs.recommended,
   {
     files: ["**/*.js"],
     languageOptions: {
       ecmaVersion: 2021,
-      sourceType: "commonjs", // so require/module are allowed
+      sourceType: "commonjs",
       globals: {
-        // Node globals so 'no-undef' doesn't complain
         require: "readonly",
         module: "readonly",
         __dirname: "readonly",
         process: "readonly",
+        console: "readonly", // fixes your error
       },
     },
     rules: {
-      // keep whatever rules you want; this is just an example
-      "no-undef": "error",
+      // your custom rules here
     },
   },
 ];
