@@ -78,7 +78,7 @@ jobs:
     env:
       K8S_NAMESPACE: webapp
       HELM_RELEASE_NAME: webapp
-      HELM_CHART_PATH: ${{ vars.HELM_CHART_PATH }}
+      HELM_CHART_PATH: ./webapp
       IMAGE_REPO: us-central1-docker.pkg.dev/devops-candidate-2/app-artifact-repo
       IMAGE_NAME: devops-sample-app
     steps:
@@ -136,7 +136,7 @@ jobs:
       env:
         RELEASE: ${{ env.HELM_RELEASE_NAME }}
         NAMESPACE: ${{ env.K8S_NAMESPACE }}
-        CHART: ${{ env.HELM_CHART_PATH }}
+        CHART:  ./webapp
         IMAGE_REPO: ${{ env.IMAGE_REPO }}
         IMAGE: ${{ env.IMAGE_NAME }}
         IMAGE_TAG: ${{ github.sha }}
