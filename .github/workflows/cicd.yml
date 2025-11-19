@@ -132,11 +132,21 @@ jobs:
           echo "prev_rev=" >> $GITHUB_OUTPUT
         fi
 
+    - name: Show repo layout (debug)
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "PWD: $(pwd)"
+        echo "Listing root:"
+        ls -la
+        echo "--- repo tree (depth 2) ---"
+        find . -maxdepth 2 -type d -print
+
     - name: Helm upgrade --install (wait)
       env:
         RELEASE: ${{ env.HELM_RELEASE_NAME }}
         NAMESPACE: ${{ env.K8S_NAMESPACE }}
-        CHART:  ./webapp
+        CHART: ${{ env.HELM_CHART_PATH }}
         IMAGE_REPO: ${{ env.IMAGE_REPO }}
         IMAGE: ${{ env.IMAGE_NAME }}
         IMAGE_TAG: ${{ github.sha }}
