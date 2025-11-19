@@ -69,88 +69,67 @@ jobs:
           echo "Pushing image tags"
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:latest"
-  get-kube-credentials:
-    name: Get GKE credentials
+  helm-deploy:
+    name: Get GKE credentials & Helm deploy (upgrade --install)
     runs-on: ubuntu-latest
     needs: build-test-lint-docker
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Get credentials for cluster
-        env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          CLUSTER: ${{ secrets.GKE_CLUSTER_NAME }}
-          LOCATION: ${{ secrets.GKE_CLUSTER_LOCATION }}
-        run: |
-          # try regional then zonal
-          set -e
-          gcloud container clusters get-credentials "$CLUSTER" --project "$PROJECT_ID" --region "$LOCATION" || \
-            gcloud container clusters get-credentials "$CLUSTER" --project "$PROJECT_ID" --zone "$LOCATION"
-
-      - name: Verify kubectl connectivity
-        run: |
-          kubectl version --client
-          kubectl get nodes --no-headers -o wide || true
-  helm-deploy:
-    name: Helm upgrade --install
-    runs-on: ubuntu-latest
-    needs: get-kube-credentials
     environment: production
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Install jq (for parsing helm history)
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up gcloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Get GKE credentials (writes kubeconfig for this runner)
+      uses: google-github-actions/get-gke-credentials@v1
+      with:
+        cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
+        location: ${{ secrets.GKE_CLUSTER_LOCATION }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Verify kubectl connectivity
+      run: |
+        kubectl version --client
+        kubectl get nodes --no-headers -o wide
+
+        - name: Install jq (for parsing helm history)
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Setup Helm
+        - name: Setup Helm
         uses: azure/setup-helm@v3
         with:
-          version: v3.12.0
+        version: v3.12.0
 
-      - name: Ensure namespace exists
-        env:
-          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+        - name: Ensure namespace exists
         run: |
-          kubectl get namespace "$NAMESPACE" || kubectl create namespace "$NAMESPACE"
+        kubectl get namespace "${K8S_NAMESPACE}" || kubectl create namespace "${K8S_NAMESPACE}"
 
-      - name: Capture previous Helm revision
+        - name: Capture previous Helm revision (if any)
         id: prev
-        env:
-          RELEASE: ${{ env.HELM_RELEASE_NAME }}
-          NAMESPACE: ${{ env.K8S_NAMESPACE }}
         run: |
-          # If release does not exist, PREV_REV will be empty
-          if helm status "$RELEASE" -n "$NAMESPACE" > /dev/null 2>&1; then
-            # get the last revision number (highest)
-            PREV=$(helm history "$RELEASE" -n "$NAMESPACE" --output json | jq -r '.[-1].revision')
-            echo "prev_rev=$PREV" >> $GITHUB_OUTPUT
-          else
-            echo "prev_rev=" >> $GITHUB_OUTPUT
-          fi
+        RELEASE="${HELM_RELEASE_NAME}"
+        NAMESPACE="${K8S_NAMESPACE}"
+        if helm status "$RELEASE" -n "$NAMESPACE" > /dev/null 2>&1; then
+          PREV=$(helm history "$RELEASE" -n "$NAMESPACE" --output json | jq -r '.[-1].revision' || echo "")
+          echo "prev_rev=$PREV" >> $GITHUB_OUTPUT
+        else
+          echo "prev_rev=" >> $GITHUB_OUTPUT
+        fi
 
-      - name: Helm upgrade --install (wait)
-        env:
-          RELEASE: ${{ env.HELM_RELEASE_NAME }}
-          NAMESPACE: ${{ env.K8S_NAMESPACE }}
-          CHART: ${{ env.HELM_CHART_PATH }}
-          IMAGE_REPO: ${{ env.IMAGE_REPO }}
-          IMAGE: ${{ env.IMAGE_NAME }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          helm upgrade --install "$RELEASE" "$CHART" \
-            --namespace "$NAMESPACE" \
-            --set image.repository="${IMAGE_REPO}/${IMAGE}" \
-            --set image.tag="${IMAGE_TAG}" \
-            --wait --timeout 5m
+    - name: Helm upgrade --install (wait)
+      run: |
+        set -e
+        helm upgrade --install "$RELEASE" "$CHART" \
+          --namespace "$NAMESPACE" \
+          --set image.repository="${IMAGE_REPO}/${IMAGE}" \
+          --set image.tag="${IMAGE_TAG}" \
+          --wait --timeout 5m
+
