@@ -1,14 +1,13 @@
 name: CI - Build, Test, Lint, Docker
 
 on:
- workflow_dispatch:
+  workflow_dispatch:
   # push:
-  #   branches: 
-  #   - master
-
+  #   branches:
+  #     - master
   # pull_request:
-  #   branches: 
-  #   - master
+  #   branches:
+  #     - master
 
 jobs:
   build-test-lint-docker:
@@ -21,7 +20,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22.13.1"       
+          node-version: "22.13.1"
 
       - name: Install dependencies
         run: npm ci
@@ -35,25 +34,38 @@ jobs:
         run: npm run lint
         working-directory: app
 
-      - name: Build Docker image
-        run: |
-          docker build \
-          -t devops-sample-app:${{ github.sha }} \
-          -f app/Dockerfile \
-          app
+      # 1 Authenticate to Google Cloud with service account JSON
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # OPTIONAL: push to Docker Hub / registry (uncomment & configure)
-      # - name: Log in to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
-      #
-      # - name: Tag and push image
-      #   run: |
-      #     IMAGE_NAME="your-dockerhub-user/devops-sample-app"
-      #     git_sha="${{ github.sha }}"
-      #     docker tag devops-sample-app:${git_sha} ${IMAGE_NAME}:${git_sha}
-      #     docker tag devops-sample-app:${git_sha} ${IMAGE_NAME}:latest
-      #     docker push ${IMAGE_NAME}:${git_sha}
-      #     docker push ${IMAGE_NAME}:latest
+      # 2 Install gcloud CLI
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # 3 Configure Docker to use gcloud credentials for Artifact Registry
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      # 4 Build and push Docker image to Artifact Registry
+      - name: Build and push Docker image
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }} 
+        run: |
+          REPO="us-central1-docker.pkg.dev/${PROJECT_ID}/app-artifact-repo"
+          IMAGE="${REPO}/devops-sample-app"
+
+          echo "Building image: $IMAGE:${{ github.sha }}"
+          docker build \
+            -t "$IMAGE:${{ github.sha }}" \
+            -f app/Dockerfile \
+            app
+
+          echo "Tagging 'latest'"
+          docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:latest"
+
+          echo "Pushing image tags"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
