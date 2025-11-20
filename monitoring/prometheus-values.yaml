@@ -1,0 +1,46 @@
+grafana:
+  enabled: false
+
+alertmanager:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    # Allow ServiceMonitor/PodMonitor/Rules from all namespaces
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+    retention: 6h
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+# ServiceMonitor to scrape app on /metrics
+serviceMonitor:
+  enabled: true
+  additionalServiceMonitors:
+    - name: devops-sample-app
+      namespace: default
+      selector:
+        matchLabels:
+          app: devops-sample-app
+      endpoints:
+        - port: http
+          path: /metrics
+          interval: 15s
+
+# Simple alert rule on high error rate
+additionalPrometheusRulesMap:
+  devops-sample-app-rules:
+    groups:
+      - name: devops-sample-app-alerts
+        rules:
+          - alert: HighHttpErrorRate
+            expr: rate(http_requests_total[5m]) > 0.1
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High HTTP error rate detected"
+              description: "http_requests_total > 0.1 req/s over 5m for devops-sample-app"

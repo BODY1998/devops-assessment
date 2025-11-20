@@ -1,0 +1,18 @@
+adminUser: admin
+adminPassword: mymostsecurepassword
+
+service:
+  type: LoadBalancer
+
+persistence:
+  enabled: false
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local
+        access: proxy
+        isDefault: true
